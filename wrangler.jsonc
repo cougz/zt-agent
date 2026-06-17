@@ -29,7 +29,7 @@
 
   // Plain env vars — set your account ID here
   "vars": {
-    "CF_ACCOUNT_ID": "YOUR_ACCOUNT_ID_HERE"
+    "CF_ACCOUNT_ID": "9c0e55ad8906a05169a1259400c71e5b"
   }
 
   // Secrets — set with: wrangler secret put CF_API_TOKEN
