@@ -1,5 +1,5 @@
 import { AIChatAgent, type OnChatMessageOptions } from "@cloudflare/ai-chat";
-import { streamText, convertToModelMessages, tool, stepCountIs, type ToolSet, type StreamTextOnFinishCallback } from "ai";
+import { streamText, convertToModelMessages, tool, stepCountIs, wrapLanguageModel, type LanguageModelMiddleware, type ToolSet, type StreamTextOnFinishCallback } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 import { routeAgentRequest } from "agents";
 import { z } from "zod";
@@ -450,6 +450,75 @@ Guidelines:
 5. Cite the Cloudflare Zero Trust docs URL when explaining concepts the user may want to read more about.
 6. If you are unsure of the correct wirefilter expression syntax or API field, say so rather than guessing.`;
 
+// Workers AI rejects tool schemas that contain a "$schema" key — strip it.
+// The key is added automatically by @ai-sdk/provider-utils when converting
+// Zod schemas to JSONSchema7 but Workers AI binding doesn't accept it.
+// Workers AI middleware — fixes two Workers AI binding quirks:
+//
+// 1. $schema in tool inputSchema: @ai-sdk/provider-utils adds a
+//    "$schema" key when converting Zod schemas to JSONSchema7. Workers AI
+//    ignores all tool schemas when this key is present, so we strip it.
+//
+// 2. Streaming tool calls: Workers AI native models (Llama family) don't
+//    stream tool calls via SSE — they output the call JSON as plain text in
+//    the `response` field. We avoid this by calling doGenerate() (non-
+//    streaming, tool calls properly returned in the result object) and
+//    wrapping the result in a one-shot ReadableStream that the AI SDK can
+//    consume identically to a real stream.
+const workersAiMiddleware: LanguageModelMiddleware = {
+  specificationVersion: "v3",
+  wrapStream: async ({ doGenerate, params }) => {
+    // Strip $schema from every function tool's inputSchema
+    if (params.tools) {
+      params.tools = params.tools.map((t) => {
+        if (t.type !== "function") return t;
+        const schema = t.inputSchema as Record<string, unknown>;
+        if (!("$schema" in schema)) return t;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { $schema: _dropped, ...rest } = schema;
+        return { ...t, inputSchema: rest };
+      });
+    }
+
+    // Use the non-streaming generate path so tool calls come back
+    // in the structured result.content array (not as text deltas).
+    const result = await doGenerate();
+
+    // Convert GenerateResult → a one-shot ReadableStream<StreamPart>
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue({ type: "stream-start", warnings: result.warnings });
+
+        for (const part of result.content) {
+          if (part.type === "text") {
+            const textId = crypto.randomUUID();
+            controller.enqueue({ type: "text-start", id: textId });
+            controller.enqueue({ type: "text-delta", id: textId, delta: part.text });
+            controller.enqueue({ type: "text-end", id: textId });
+          } else if (part.type === "tool-call") {
+            controller.enqueue({
+              type: "tool-call",
+              toolCallId: part.toolCallId,
+              toolName: part.toolName,
+              input: part.input,
+            });
+          }
+        }
+
+        controller.enqueue({
+          type: "finish",
+          finishReason: result.finishReason,
+          usage: result.usage,
+          ...(result.providerMetadata ? { providerMetadata: result.providerMetadata } : {}),
+        });
+        controller.close();
+      },
+    });
+
+    return { stream, request: result.request, response: result.response };
+  },
+};
+
 export class ZeroTrustAgent extends AIChatAgent<FullEnv> {
   async onChatMessage(
     onFinish: StreamTextOnFinishCallback<ToolSet>,
@@ -457,12 +526,14 @@ export class ZeroTrustAgent extends AIChatAgent<FullEnv> {
   ) {
     try {
       const workersai = createWorkersAI({ binding: this.env.AI });
+      const baseModel = workersai("@cf/meta/llama-3.3-70b-instruct-fp8-fast");
+      const model = wrapLanguageModel({ model: baseModel, middleware: workersAiMiddleware });
       const modelMessages = await convertToModelMessages(this.messages);
 
       console.log("[ZTA] onChatMessage — messages:", modelMessages.length, "tools:", Object.keys(makeTools(this.env)).length);
 
       const result = streamText({
-        model: workersai("@cf/meta/llama-4-scout-17b-16e-instruct"),
+        model,
         system: SYSTEM_PROMPT,
         messages: modelMessages,
         tools: makeTools(this.env),
