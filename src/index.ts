@@ -455,21 +455,29 @@ export class ZeroTrustAgent extends AIChatAgent<FullEnv> {
     onFinish: StreamTextOnFinishCallback<ToolSet>,
     options?: OnChatMessageOptions
   ) {
-    const workersai = createWorkersAI({ binding: this.env.AI });
+    try {
+      const workersai = createWorkersAI({ binding: this.env.AI });
+      const modelMessages = await convertToModelMessages(this.messages);
 
-    const result = streamText({
-      // @cf/meta/llama-3.3-70b-instruct supports tool calling via workers-ai-provider
-      model: workersai("@cf/meta/llama-3.3-70b-instruct"),
-      system: SYSTEM_PROMPT,
-      messages: await convertToModelMessages(this.messages),
-      tools: makeTools(this.env),
-      stopWhen: stepCountIs(10),  // allow up to 10 tool-call steps
-      abortSignal: options?.abortSignal,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      onFinish: onFinish as any,
-    });
+      console.log("[ZTA] onChatMessage — messages:", modelMessages.length, "tools:", Object.keys(makeTools(this.env)).length);
 
-    return result.toUIMessageStreamResponse();
+      const result = streamText({
+        model: workersai("@cf/meta/llama-3.3-70b-instruct"),
+        system: SYSTEM_PROMPT,
+        messages: modelMessages,
+        tools: makeTools(this.env),
+        stopWhen: stepCountIs(10),
+        abortSignal: options?.abortSignal,
+        onError: (e) => console.error("[ZTA] streamText onError:", e),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onFinish: onFinish as any,
+      });
+
+      return result.toUIMessageStreamResponse();
+    } catch (err) {
+      console.error("[ZTA] onChatMessage threw:", err);
+      throw err;
+    }
   }
 }
 
