@@ -213,11 +213,12 @@
     appendBubble('tool', `Tool: ${name}`, text);
   }
 
-  // ── AI SDK data-stream parser ───────────────────────────────────────────────
-  // Server sends chunks via `body` field in cf_agent_use_chat_response messages.
-  // Each chunk is a line: `<code>:<json-value>\n`
-  // Codes: 0=text, 9=tool-call-start, a=tool-result, d=finish, e=error, ...
+  // ── AI SDK UI message stream parser (ai v6 object format) ──────────────────
+  // @cloudflare/ai-chat v0.8 sends cf_agent_use_chat_response with body
+  // containing newline-delimited JSON objects from toUIMessageStreamResponse().
+  // Each object has a `type` field.
   let streamBuffer = '';
+  let activeToolName = null;
 
   function processStreamChunk(chunk) {
     streamBuffer += chunk;
@@ -226,45 +227,57 @@
 
     for (const line of lines) {
       if (!line.trim()) continue;
-      const colonIdx = line.indexOf(':');
-      if (colonIdx === -1) continue;
-      const code = line.slice(0, colonIdx);
-      const raw  = line.slice(colonIdx + 1);
+      let evt;
+      try { evt = JSON.parse(line); } catch { continue; }
 
-      let value;
-      try { value = JSON.parse(raw); } catch { value = raw; }
+      switch (evt.type) {
+        case 'start':
+          // New assistant turn starting — open a fresh bubble
+          currentText   = '';
+          currentBubble = null;
+          break;
 
-      switch (code) {
-        case '0': // text delta
+        case 'text-start':
           if (!currentBubble) startAgentBubble();
-          currentText += value;
+          break;
+
+        case 'text-delta':
+          if (!currentBubble) startAgentBubble();
+          currentText += evt.delta || '';
           currentBubble.textContent = currentText;
           scrollBottom();
           break;
 
-        case '9': // tool-call-start (args may stream in)
-          appendToolBubble(value.toolName || 'tool', value.args ?? {});
+        case 'text-end':
           break;
 
-        case 'a': // tool-result
-          // Update the last tool bubble with the result
+        case 'tool-call':   // non-streaming: full call in one event
+        case 'tool-input-available':
+          activeToolName = evt.toolName || evt.tool_name || 'tool';
+          appendToolBubble(activeToolName, evt.input ?? evt.args ?? {});
+          break;
+
+        case 'tool-result':
           {
             const lastTool = messagesEl.querySelector('.msg-wrap.tool:last-child .bubble');
             if (lastTool) {
-              const result = JSON.stringify(value.result ?? value, null, 2);
+              const result = JSON.stringify(evt.result ?? evt, null, 2);
               lastTool.textContent += '\n\n→ ' + result.slice(0, 1400)
                 + (result.length > 1400 ? '\n…(truncated)' : '');
             }
           }
           break;
 
-        case 'd': // finish / usage
+        case 'finish-step':
+          break;
+
+        case 'finish':
           finishStream();
           break;
 
-        case 'e': // error
+        case 'error':
           if (!currentBubble) startAgentBubble();
-          currentBubble.textContent = 'Error: ' + (value?.errorMessage || JSON.stringify(value));
+          currentBubble.textContent = 'Error: ' + (evt.errorMessage || evt.message || JSON.stringify(evt));
           finishStream();
           break;
       }

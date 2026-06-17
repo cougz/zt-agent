@@ -462,7 +462,7 @@ export class ZeroTrustAgent extends AIChatAgent<FullEnv> {
       console.log("[ZTA] onChatMessage — messages:", modelMessages.length, "tools:", Object.keys(makeTools(this.env)).length);
 
       const result = streamText({
-        model: workersai("@cf/meta/llama-3.3-70b-instruct"),
+        model: workersai("@cf/meta/llama-4-scout-17b-16e-instruct"),
         system: SYSTEM_PROMPT,
         messages: modelMessages,
         tools: makeTools(this.env),
