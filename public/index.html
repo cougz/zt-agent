@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zero Trust Agent</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+      background: #0b0e14;
+      color: #e2e8f0;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 20px;
+      background: #0f1522;
+      border-bottom: 1px solid #1e2a3a;
+      flex-shrink: 0;
+    }
+
+    header svg { width: 28px; height: 28px; }
+
+    header h1 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #f6f6ef;
+    }
+
+    header span {
+      font-size: 12px;
+      color: #64748b;
+      margin-left: auto;
+    }
+
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .message {
+      max-width: 820px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .message.user .bubble {
+      background: #1a2742;
+      border: 1px solid #1e3a5f;
+      margin-left: auto;
+      max-width: 70%;
+    }
+
+    .message.assistant .bubble {
+      background: #111827;
+      border: 1px solid #1e2a3a;
+    }
+
+    .message.tool .bubble {
+      background: #0a1628;
+      border: 1px dashed #1e3a5f;
+      font-size: 12px;
+      color: #64748b;
+      font-family: "Courier New", monospace;
+    }
+
+    .bubble {
+      padding: 12px 16px;
+      border-radius: 8px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .role-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 5px;
+      color: #475569;
+    }
+
+    .message.user .role-label { text-align: right; }
+    .message.assistant .role-label { color: #f97316; }
+    .message.tool .role-label { color: #3b82f6; }
+
+    #input-area {
+      padding: 16px 20px;
+      background: #0f1522;
+      border-top: 1px solid #1e2a3a;
+      flex-shrink: 0;
+    }
+
+    #form {
+      display: flex;
+      gap: 10px;
+      max-width: 820px;
+      margin: 0 auto;
+    }
+
+    #input {
+      flex: 1;
+      background: #1a2236;
+      border: 1px solid #1e3a5f;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 14px;
+      padding: 10px 14px;
+      outline: none;
+      resize: none;
+      min-height: 42px;
+      max-height: 160px;
+      font-family: inherit;
+    }
+
+    #input:focus { border-color: #3b82f6; }
+    #input::placeholder { color: #475569; }
+
+    #send {
+      background: #f97316;
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 10px 20px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+
+    #send:hover { background: #ea6c0a; }
+    #send:disabled { background: #374151; cursor: not-allowed; }
+
+    #status {
+      font-size: 11px;
+      color: #475569;
+      text-align: center;
+      margin-top: 8px;
+    }
+
+    .typing { color: #f97316; }
+
+    pre { white-space: pre-wrap; font-size: 13px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <!-- Cloudflare logo mark -->
+  <svg viewBox="0 0 109 41" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M73.536 33.486c.44 0 .793-.354.793-.793v-2.97a.793.793 0 0 0-.793-.793H64.4v-3.983h9.136c.44 0 .793-.354.793-.793v-2.97a.793.793 0 0 0-.793-.793H64.4v-3.724h9.136c.44 0 .793-.354.793-.793v-2.97a.793.793 0 0 0-.793-.793H60.635a.793.793 0 0 0-.793.793v19.79c0 .44.354.793.793.793h12.9ZM36.73 13.696a.793.793 0 0 0-.793.793v11.55L28.6 14.138a.793.793 0 0 0-.66-.442h-3.622a.793.793 0 0 0-.793.793v19.79c0 .44.354.793.793.793h3.763c.44 0 .793-.354.793-.793V22.727l7.338 11.903a.793.793 0 0 0 .66.442h3.621c.44 0 .793-.354.793-.793V14.49a.793.793 0 0 0-.793-.793H36.73Z" fill="#F6821F"/>
+    <path d="M83.386 33.486h3.763a.793.793 0 0 0 .793-.793V14.49a.793.793 0 0 0-.793-.793h-3.763a.793.793 0 0 0-.793.793v18.203c0 .44.354.793.793.793Z" fill="#F6821F"/>
+    <path d="M47.02 33.486h13.407c.44 0 .793-.354.793-.793V29.72a.793.793 0 0 0-.793-.793H51.576V14.49a.793.793 0 0 0-.793-.793h-3.763a.793.793 0 0 0-.793.793v18.203c0 .44.354.793.793.793Z" fill="#F6821F"/>
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M19.413 26.03c.276-1.026.17-1.974-.306-2.685-.43-.647-1.13-1.017-1.971-1.04l-12.84-.163c-.085 0-.163-.04-.209-.11a.253.253 0 0 1-.025-.234c.048-.113.163-.19.29-.2l12.961-.164c1.535-.072 3.2-1.302 3.78-2.8l.739-1.927a.26.26 0 0 0 .014-.16C20.835 11.1 16.278 7.5 10.87 7.5 5.98 7.5 1.853 10.55.514 14.8c-.43-.32-.977-.5-1.564-.483-1.134.033-2.048.98-2.05 2.115a2.14 2.14 0 0 0 .245.997C-4.526 17.56-6 19.338-6 21.453c0 2.375 1.925 4.3 4.3 4.3H18.8c.27 0 .515-.176.613-.44l.001-.004v-.001l-.001.003v-.001Z" fill="#FBAD41"/>
+  </svg>
+  <h1>Zero Trust Agent</h1>
+  <span id="ws-status">connecting...</span>
+</header>
+
+<div id="messages">
+  <div class="message assistant">
+    <div class="role-label">Zero Trust Agent</div>
+    <div class="bubble">Hello! I can help you manage your Cloudflare Zero Trust environment. You can ask me things like:
+
+- "List all my Access applications"
+- "Show me blocked Gateway requests in the last hour"
+- "Create a Gateway DNS rule to block social media"
+- "What tunnels do I have and what's their status?"
+- "List enrolled WARP devices"
+
+What would you like to do?</div>
+  </div>
+</div>
+
+<div id="input-area">
+  <form id="form">
+    <textarea id="input" placeholder="Ask about your Zero Trust environment..." rows="1"></textarea>
+    <button id="send" type="submit">Send</button>
+  </form>
+  <div id="status"></div>
+</div>
+
+<script>
+  const messagesEl = document.getElementById("messages");
+  const form = document.getElementById("form");
+  const input = document.getElementById("input");
+  const sendBtn = document.getElementById("send");
+  const wsStatus = document.getElementById("ws-status");
+  const statusEl = document.getElementById("status");
+
+  // Derive agent URL from current location
+  // Agent route: /agents/zero-trust-agent/{session-id}
+  const sessionId = "session-" + Math.random().toString(36).slice(2, 10);
+  const agentPath = `/agents/zero-trust-agent/${sessionId}`;
+  const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${agentPath}`;
+
+  let ws = null;
+  let currentBubble = null;
+  let currentText = "";
+  let reconnectTimer = null;
+
+  function connect() {
+    ws = new WebSocket(wsUrl);
+    wsStatus.textContent = "connecting...";
+
+    ws.addEventListener("open", () => {
+      wsStatus.textContent = "connected";
+      wsStatus.style.color = "#22c55e";
+    });
+
+    ws.addEventListener("close", () => {
+      wsStatus.textContent = "disconnected";
+      wsStatus.style.color = "#ef4444";
+      reconnectTimer = setTimeout(connect, 3000);
+    });
+
+    ws.addEventListener("error", () => {
+      wsStatus.textContent = "error";
+      wsStatus.style.color = "#ef4444";
+    });
+
+    ws.addEventListener("message", (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        handleServerMessage(msg);
+      } catch {
+        // ignore malformed frames
+      }
+    });
+  }
+
+  function handleServerMessage(msg) {
+    if (msg.type === "cf_agent_chat_messages_updated") {
+      // Full message list re-render on reconnect / history load
+      const msgs = msg.messages ?? [];
+      // Only show non-user messages that are new (simple dedup by id)
+      msgs.forEach(renderMessage);
+      return;
+    }
+
+    // AI SDK UI message stream events
+    if (msg.type === "0") { // text delta
+      if (!currentBubble) startAssistantBubble();
+      currentText += msg.value ?? "";
+      currentBubble.textContent = currentText;
+      scrollBottom();
+    } else if (msg.type === "d") { // finish
+      currentBubble = null;
+      currentText = "";
+      sendBtn.disabled = false;
+      statusEl.textContent = "";
+    } else if (msg.type === "9") { // tool call
+      appendToolCall(msg.toolName, msg.args);
+    } else if (msg.type === "a") { // tool result
+      appendToolResult(msg.result);
+    }
+  }
+
+  const renderedIds = new Set();
+
+  function renderMessage(msg) {
+    if (renderedIds.has(msg.id)) return;
+    renderedIds.add(msg.id);
+    if (msg.role === "user") {
+      const text = msg.parts?.find(p => p.type === "text")?.text ?? msg.content ?? "";
+      appendBubble("user", "You", text);
+    } else if (msg.role === "assistant") {
+      const text = msg.parts?.filter(p => p.type === "text").map(p => p.text).join("") ?? msg.content ?? "";
+      if (text) appendBubble("assistant", "Zero Trust Agent", text);
+    }
+  }
+
+  function startAssistantBubble() {
+    const wrap = document.createElement("div");
+    wrap.className = "message assistant";
+    const label = document.createElement("div");
+    label.className = "role-label";
+    label.textContent = "Zero Trust Agent";
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    wrap.appendChild(label);
+    wrap.appendChild(bubble);
+    messagesEl.appendChild(wrap);
+    currentBubble = bubble;
+    scrollBottom();
+  }
+
+  function appendBubble(role, label, text) {
+    const wrap = document.createElement("div");
+    wrap.className = `message ${role}`;
+    const lbl = document.createElement("div");
+    lbl.className = "role-label";
+    lbl.textContent = label;
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.textContent = text;
+    wrap.appendChild(lbl);
+    wrap.appendChild(bubble);
+    messagesEl.appendChild(wrap);
+    scrollBottom();
+  }
+
+  function appendToolCall(name, args) {
+    const wrap = document.createElement("div");
+    wrap.className = "message tool";
+    const lbl = document.createElement("div");
+    lbl.className = "role-label";
+    lbl.textContent = `Tool call: ${name}`;
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.textContent = JSON.stringify(args, null, 2);
+    wrap.appendChild(lbl);
+    wrap.appendChild(bubble);
+    messagesEl.appendChild(wrap);
+    scrollBottom();
+  }
+
+  function appendToolResult(result) {
+    const last = messagesEl.querySelector(".message.tool:last-child .bubble");
+    if (last) {
+      const resultStr = typeof result === "string" ? result : JSON.stringify(result, null, 2);
+      last.textContent += "\n\n→ " + resultStr.slice(0, 1200) + (resultStr.length > 1200 ? "\n…(truncated)" : "");
+    }
+  }
+
+  function scrollBottom() {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+    appendBubble("user", "You", text);
+    input.value = "";
+    input.style.height = "auto";
+    sendBtn.disabled = true;
+    statusEl.innerHTML = '<span class="typing">Agent is thinking...</span>';
+    currentBubble = null;
+    currentText = "";
+
+    ws.send(JSON.stringify({
+      type: "cf_agent_chat_message",
+      message: { role: "user", content: text }
+    }));
+  });
+
+  // Auto-grow textarea
+  input.addEventListener("input", () => {
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 160) + "px";
+  });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      form.dispatchEvent(new Event("submit"));
+    }
+  });
+
+  connect();
+</script>
+</body>
+</html>

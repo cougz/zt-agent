@@ -1,0 +1,37 @@
+{
+  "name": "zt-agent",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-06-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Durable Object binding for the AIChatAgent
+  "durable_objects": {
+    "bindings": [
+      { "name": "ZeroTrustAgent", "class_name": "ZeroTrustAgent" }
+    ]
+  },
+
+  // SQLite-backed DO migration (required for AIChatAgent)
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["ZeroTrustAgent"] }
+  ],
+
+  // Workers AI binding (no external API key needed)
+  "ai": { "binding": "AI" },
+
+  // Static chat UI served from public/
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
+
+  // Plain env vars — set your account ID here
+  "vars": {
+    "CF_ACCOUNT_ID": "YOUR_ACCOUNT_ID_HERE"
+  }
+
+  // Secrets — set with: wrangler secret put CF_API_TOKEN
+  // CF_API_TOKEN: Cloudflare API token with Zero Trust read/write permissions
+}

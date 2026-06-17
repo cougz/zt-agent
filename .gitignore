@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Wrangler build output
+.wrangler/
+dist/
+
+# Wrangler secrets / local dev vars (never commit these)
+.dev.vars
+.dev.vars.*
+
+# Generated types (regenerate with: npx wrangler types)
+worker-configuration.d.ts
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.*
+!.env.example

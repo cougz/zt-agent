@@ -1,0 +1,8 @@
+{
+  "extends": "./node_modules/agents/agents.tsconfig.json",
+  "include": ["src/**/*.ts", "worker-configuration.d.ts"],
+  "compilerOptions": {
+    "types": ["node", "@cloudflare/workers-types"],
+    "paths": { "~/*": ["./src/*"] }
+  }
+}
